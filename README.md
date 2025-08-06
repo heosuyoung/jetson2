@@ -1,105 +1,104 @@
-# jetson_server.py (젯슨에서 실행)
+import serial
+import time
 import socket
-import json
-import threading
-import sys
-import time # 디버깅용으로 추가: import time
 
-HOST = '0.0.0.0'
-PORT = 65432
+# ====================================================================
+# [설정] Jetson Nano의 IP 주소와 포트 번호를 여기에 입력하세요
+# ====================================================================
+NANOJETSON_IP = "192.168.137.141"
+PORT = 12345
+# ====================================================================
 
-# --- 데이터 수신 버퍼 및 JSON 파싱 함수 (최종 디버그 버전) ---
-def receive_json_message(conn, buffer):
-    while True:
-        try:
-            print(f"[{time.time()}] [DEBUG_RECEIVE] conn.recv(4096) 호출 직전. 데이터 대기 중...")
-            chunk = conn.recv(4096)
+# MH-Z19B가 연결된 시리얼 포트
+ser = serial.Serial('/dev/ttyAMA0', baudrate=9600, timeout=1)
+
+def read_co2():
+    """
+    MH-Z19B 센서로부터 CO2 농도를 읽어오는 함수
+    """
+    try:
+        ser.write(b'\xFF\x01\x86\x00\x00\x00\x00\x00\x79')
+        time.sleep(0.1)
+        response = ser.read(9)
+        
+        if len(response) != 9:
+            return None
+
+        # 체크섬 검사
+        checksum = 0xFF - (sum(response[1:8]) % 256) + 1
+        if response[0] == 0xFF and response[1] == 0x86 and response[8] == (checksum & 0xFF):
+            co2 = response[2] * 256 + response[3]
+            return co2
+        else:
+            return None
             
-            if not chunk:
-                print(f"[{time.time()}] [DEBUG_RECEIVE] 클라이언트 ({conn.getpeername()}) 연결 종료 감지 (chunk is empty).")
-                return None, buffer
-            
-            decoded_chunk = chunk.decode('utf-8')
-            print(f"[{time.time()}] [DEBUG_RECEIVE] 수신된 청크: '{decoded_chunk.strip()}' (길이: {len(decoded_chunk)})")
-            
-            buffer += decoded_chunk
-            print(f"[{time.time()}] [DEBUG_RECEIVE] 현재 버퍼: '{buffer.strip()}' (총 길이: {len(buffer)})")
-            print(f"[{time.time()}] [DEBUG_RECEIVE] 버퍼에 줄바꿈('\\n') 존재 여부: {'\\n' in buffer}")
-            
-            while '\n' in buffer:
-                message, buffer = buffer.split('\n', 1)
-                print(f"[{time.time()}] [DEBUG_RECEIVE] 분리된 메시지: '{message.strip()}' (길이: {len(message.strip())})")
-                
+    except serial.SerialException as e:
+        print(f"시리얼 통신 오류: {e}")
+        return None
+    except Exception as e:
+        print(f"CO2 읽기 오류: {e}")
+        return None
+
+def send_co2_to_jetson(co2_value):
+    """
+    CO2 값을 Jetson Nano 서버로 전송하는 함수
+    """
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.connect((NANOJETSON_IP, PORT))
+            message = str(co2_value).encode('utf-8')
+            s.sendall(message)
+            print(f"CO2 값 {co2_value} ppm 전송 완료.")
+    except Exception as e:
+        print(f"데이터 전송 실패: {e}")
+
+# ====================================================================
+# 메인 실행 루프
+# ====================================================================
+while True:
+    co2 = read_co2()
+    if co2 is not None:
+        print(f"CO2 농도: {co2} ppm")
+        send_co2_to_jetson(co2)
+    else:
+        print("센서 응답 없음 또는 체크섬 오류")
+    time.sleep(2)
+
+
+#================================================================
+#================================================================
+import socket
+
+# ====================================================================
+# [설정] 라즈베리 파이와 동일한 포트 번호를 사용해야 합니다
+# ====================================================================
+HOST = '0.0.0.0' # 모든 네트워크 인터페이스로부터의 연결을 받음
+PORT = 12345
+# ====================================================================
+
+def run_server():
+    """
+    라즈베리 파이로부터 CO2 값을 수신하는 서버
+    """
+    print(f"Jetson Nano 서버 시작. 포트 {PORT}에서 데이터를 기다리는 중...")
+    
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind((HOST, PORT))
+        s.listen()
+        
+        conn, addr = s.accept()
+        with conn:
+            print(f"라즈베리 파이에서 연결됨: {addr}")
+            while True:
+                data = conn.recv(1024)
+                if not data:
+                    print("클라이언트 연결 종료.")
+                    break
                 try:
-                    json_data = json.loads(message.strip())
-                    print(f"[{time.time()}] [DEBUG_RECEIVE] JSON 파싱 성공!")
-                    return json_data, buffer # JSON 파싱 성공 시 데이터 반환
-                except json.JSONDecodeError as e:
-                    print(f"[{time.time()}] JSON 디코딩 오류: {e}. 수신된 메시지: '{message.strip()}'")
-                    # JSON 디코딩 실패 시, 버퍼에 남은 다른 메시지를 계속 시도
-                    continue 
+                    co2_value = data.decode('utf-8')
+                    print(f"수신된 CO2 값: {co2_value} ppm")
+                except Exception as e:
+                    print(f"데이터 디코딩 오류: {e}")
 
-        except socket.timeout: # recv()에 타임아웃이 설정된 경우
-            print(f"[{time.time()}] [DEBUG_RECEIVE] 소켓 타임아웃 발생. 데이터 대기 중...")
-            return None, buffer 
-        except socket.error as e:
-            print(f"[{time.time()}] [DEBUG_RECEIVE] 소켓 오류 발생: {e}")
-            return None, buffer
-        except Exception as e:
-            print(f"[{time.time()}] [DEBUG_RECEIVE] 수신 중 알 수 없는 오류 발생: {e}")
-            return None, buffer
-
-# --- 클라이언트 연결 처리 함수 --- (이 부분은 그대로)
-def handle_client_connection(conn, addr):
-    print(f"[연결됨] {addr} 에서 연결되었습니다.")
-    buffer = ""
-    try:
-        while True:
-            sensor_data, buffer = receive_json_message(conn, buffer)
-            
-            if sensor_data is None:
-                print(f"[연결 종료 또는 오류] {addr} 와의 연결이 끊어졌습니다.")
-                break
-
-            # --- 이 부분이 이제 정상적으로 출력될 것으로 예상됩니다 ---
-            timestamp = sensor_data.get("timestamp", "N/A")
-            touch_detected = sensor_data.get("touch_detected", "N/A")
-            
-            print(f"\n--- 새로운 센서 데이터 수신 ({addr}) ---")
-            print(f"시간: {timestamp}")
-            print(f"터치 감지: {touch_detected}")
-            print("---------------------------------------")
-
-    except Exception as e:
-        print(f"[오류] {addr} 클라이언트 처리 중 예외 발생: {e}")
-    finally:
-        conn.close()
-        print(f"[연결 닫힘] {addr} 와의 연결이 닫혔습니다.")
-
-# --- 서버 시작 함수 --- (이 부분은 그대로)
-def start_server():
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-    try:
-        server_socket.bind((HOST, PORT))
-        server_socket.listen(5)
-        print(f"서버가 {HOST}:{PORT} 에서 대기 중입니다...")
-
-        while True:
-            conn, addr = server_socket.accept()
-            client_thread = threading.Thread(target=handle_client_connection, args=(conn, addr))
-            client_thread.daemon = True
-            client_thread.start()
-
-    except KeyboardInterrupt:
-        print("\n서버를 종료합니다.")
-    except Exception as e:
-        print(f"서버 시작 또는 실행 중 오류 발생: {e}")
-    finally:
-        server_socket.close()
-        print("서버 소켓이 닫혔습니다.")
-        sys.exit(0)
-
-if __name__ == '__main__':
-    start_server()
+if __name__ == "__main__":
+    run_server()
