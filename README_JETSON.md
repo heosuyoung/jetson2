@@ -30,10 +30,10 @@ pip3 install -r data/requirements_jetson.txt
 #### dlib 설치 (가장 중요!)
 ```bash
 # 방법 1: 소스 컴파일 (권장)
-wget http://dlib.net/files/dlib-19.24.tar.bz2
-tar -xf dlib-19.24.tar.bz2
-cd dlib-19.24
-cmake -DCMAKE_BUILD_TYPE=Release -DUSE_AVX_INSTRUCTIONS=OFF -DUSE_SSE4_INSTRUCTIONS=OFF -DUSE_SSE2_INSTRUCTIONS=OFF -DUSE_SSE_INSTRUCTIONS=OFF -DUSE_NEON_INSTRUCTIONS=ON -DUSE_BLAS=ON -DUSE_LAPACK=ON -DUSE_CUDA=ON -DCUDA_ARCH_BIN=5.3,6.2,7.2 -DCUDA_ARCH_PTX=5.3,6.2,7.2 .
+wget http://dlib.net/files/dlib-19.24.2.tar.bz2
+tar -xf dlib-19.24.2.tar.bz2
+cd dlib-19.24.2
+cmake -DCMAKE_BUILD_TYPE=Release -DUSE_AVX_INSTRUCTIONS=0 -DUSE_SSE4_INSTRUCTIONS=OFF -DUSE_SSE2_INSTRUCTIONS=OFF -DUSE_SSE_INSTRUCTIONS=OFF -DUSE_NEON_INSTRUCTIONS=ON -DUSE_BLAS=ON -DUSE_LAPACK=ON -DUSE_CUDA=ON -DCUDA_ARCH_BIN=8.7 -DCUDA_ARCH_PTX=8.7 .
 make -j4
 sudo make install
 sudo python3 setup.py install
@@ -137,6 +137,11 @@ sudo systemctl stop snapd
 - **FPS**: 25-30 FPS
 - **메모리 사용량**: 4-5GB
 - **GPU 사용량**: 70-80%
+
+### Jetson Orin Nano (8GB)
+- **FPS**: 30-35 FPS
+- **메모리 사용량**: 4-6GB
+- **GPU 사용량**: 65-75%
 
 ### Jetson Orin (16GB)
 - **FPS**: 35-40 FPS

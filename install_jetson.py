@@ -80,21 +80,21 @@ def install_dlib():
     """dlib을 Jetson에 맞게 설치합니다."""
     print("\n🔧 dlib 설치 (Jetson 최적화)...")
     
-    # dlib 소스 다운로드
-    if not run_command("wget http://dlib.net/files/dlib-19.24.tar.bz2", "dlib 소스 다운로드"):
+    # dlib 소스 다운로드 (최신 버전)
+    if not run_command("wget http://dlib.net/files/dlib-19.24.2.tar.bz2", "dlib 소스 다운로드"):
         return False
     
     # 압축 해제
-    if not run_command("tar -xf dlib-19.24.tar.bz2", "dlib 압축 해제"):
+    if not run_command("tar -xf dlib-19.24.2.tar.bz2", "dlib 압축 해제"):
         return False
     
     # dlib 디렉토리로 이동
-    os.chdir("dlib-19.24")
+    os.chdir("dlib-19.24.2")
     
-    # Jetson 최적화 옵션으로 컴파일
+    # Jetson Orin Nano 최적화 옵션으로 컴파일
     cmake_command = (
         "cmake -DCMAKE_BUILD_TYPE=Release "
-        "-DUSE_AVX_INSTRUCTIONS=OFF "  # ARM에서는 AVX 사용 불가
+        "-DUSE_AVX_INSTRUCTIONS=0 "     # ARM64에서는 AVX 미지원
         "-DUSE_SSE4_INSTRUCTIONS=OFF "  # ARM에서는 SSE4 사용 불가
         "-DUSE_SSE2_INSTRUCTIONS=OFF "  # ARM에서는 SSE2 사용 불가
         "-DUSE_SSE_INSTRUCTIONS=OFF "   # ARM에서는 SSE 사용 불가
@@ -102,8 +102,8 @@ def install_dlib():
         "-DUSE_BLAS=ON "
         "-DUSE_LAPACK=ON "
         "-DUSE_CUDA=ON "                # CUDA 사용
-        "-DCUDA_ARCH_BIN=5.3,6.2,7.2 "  # Jetson 아키텍처
-        "-DCUDA_ARCH_PTX=5.3,6.2,7.2 "
+        "-DCUDA_ARCH_BIN=8.7 "          # Jetson Orin Nano 아키텍처
+        "-DCUDA_ARCH_PTX=8.7 "          # Jetson Orin Nano 아키텍처
         "."
     )
     
@@ -126,7 +126,7 @@ def install_dlib():
     os.chdir("..")
     
     # 정리
-    run_command("rm -rf dlib-19.24*", "임시 파일 정리")
+    run_command("rm -rf dlib-19.24.2*", "임시 파일 정리")
     
     return True
 
